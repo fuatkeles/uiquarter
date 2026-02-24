@@ -1,6 +1,6 @@
 {
   "name": "uiquarter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A production-grade CLI tool for UI component analysis and resolution",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -67,6 +67,7 @@
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",
     "eslint": "^10.0.1",
+    "sharp": "^0.34.5",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.3.0",
