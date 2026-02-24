@@ -1,0 +1,82 @@
+{
+  "name": "uiquarter",
+  "version": "0.1.0",
+  "description": "A production-grade CLI tool for UI component analysis and resolution",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": {
+    "uiquarter": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "tsx test/FileDiscovery.test.ts && tsx test/AnalyzerOrchestrator.test.ts && tsx test/CacheLayer.test.ts && tsx test/normalizer.test.ts && tsx test/IntelligenceIndexer.test.ts && tsx test/init.test.ts && tsx test/analyzers.test.ts && tsx test/InsightEngine.test.ts && tsx test/query/InvertedIndex.test.ts && tsx test/query/ResolverScorer.test.ts && tsx test/query/ResolverScoringDebug.test.ts && tsx test/ai/BudgetPromptBuilder.test.ts && tsx test/cli/WatchMode.test.ts && tsx test/cli/Export.test.ts && tsx test/generate/Generate.test.ts && tsx test/drift/Drift.test.ts && tsx test/schemaMigration.test.ts && tsx test/NextjsAnalyzer.test.ts && tsx test/NuxtAnalyzer.test.ts && tsx test/SvelteKitAnalyzer.test.ts && tsx test/context/ContextBuilder.test.ts && tsx test/UxAnalyzer.test.ts && tsx test/context/TaskScopedBuilder.test.ts && tsx test/mcp/McpServer.test.ts && tsx test/AngularAnalyzer.test.ts && tsx test/BackendAnalyzers.test.ts && tsx test/FrameworkAnalyzers.test.ts && tsx test/CoverageAnalyzer.test.ts && tsx test/PerformanceAnalyzer.test.ts && tsx test/ci/CiReporter.test.ts && tsx test/ci/PrCommenter.test.ts && tsx test/mcp/HttpTransport.test.ts && tsx test/conventions/ConventionChecker.test.ts && tsx test/report/HtmlReporter.test.ts && tsx test/drift/BranchDiff.test.ts",
+    "test:vitest": "vitest run",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "cli",
+    "ui",
+    "component",
+    "analyzer",
+    "developer-tool",
+    "static-analysis",
+    "architecture",
+    "react",
+    "vue",
+    "svelte",
+    "angular",
+    "nextjs",
+    "nuxt",
+    "mcp",
+    "ai-context",
+    "dependency-graph",
+    "code-quality"
+  ],
+  "license": "MIT",
+  "author": "UIQuarter Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uiquarter/uiquarter.git"
+  },
+  "homepage": "https://github.com/uiquarter/uiquarter#readme",
+  "bugs": {
+    "url": "https://github.com/uiquarter/uiquarter/issues"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.33",
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
+    "eslint": "^10.0.1",
+    "tsup": "^8.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.0",
+    "typescript-eslint": "^8.56.0",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "commander": "^12.0.0",
+    "ignore": "^7.0.5",
+    "ts-morph": "^27.0.2"
+  }
+}

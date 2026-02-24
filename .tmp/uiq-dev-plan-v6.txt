@@ -1,0 +1,234 @@
+UIQuarter v1
+Final Development Plan
+Claude Code (Opus 4.6) + Codex (GPT 5.3) | Role-Based Workflow
+Version 6.0 | February 2026 | Consolidated from all revisions
+Item markers:
+Original items
+▶ v2: Added in v2 (critical gaps)
+◆ v4: Added in v4 (infra hardening)
+■ v6: Added in v6 (scoping, safety, polish)
+○ FUTURE: Deferred to future version
+Workflow Model
+Claude Code (Opus 4.6) acts as the lead engineer. It owns the architecture, defines all shared types, makes structural decisions, and handles complex reasoning-heavy modules. Every piece of code in the main branch goes through Claude Code.
+Codex (GPT 5.3) acts as a parallel executor. It works on isolated, well-scoped modules in separate branches. It receives a clear spec (interface definitions + expected behavior) from Claude Code and delivers implementations that Claude Code reviews and merges.
+Branch Strategy
+main branch: Claude Code only. All merges go through here.
+feature/* branches: Codex works here. One branch per task.
+Claude Code reviews every Codex branch before merge. No direct Codex-to-main commits.
+Communication Protocol
+Before assigning a task to Codex, Claude Code must produce: the TypeScript interface the module must implement, a description of expected behavior, and the test contract.
+Performance Targets
+▶ v2: Performance budgets defined upfront so every phase can validate against them.
+Full analysis on 10k file repo: < 5 seconds (with cache: < 500ms)
+Resolver query response: < 100ms
+Watch mode incremental update: < 500ms
+CLI cold start to first output: < 2 seconds
+◆ v4: Analyzer timeout: 10 seconds per analyzer (configurable via --timeout flag)
+Phase Overview
+Phase
+Focus
+Claude Code
+Codex
+1
+Foundation + Core Infrastructure
+Lead
+—
+2
+Analyzers + Orchestration
+Complex analyzers + Orchestrator
+Isolated analyzers (parallel)
+3
+Intelligence Engine + Cache
+Lead
+—
+4
+Context Resolver + Index
+Lead
+—
+5
+Integrations + Exports
+CLAUDE.md + Plugin
+Cursor export + Watch + CLI (parallel)
+6
+Framework Support
+Next.js analyzer
+Nuxt + SvelteKit (parallel)
+7
+Drift Detection + Testing + Ship
+Drift + Integration tests
+Unit tests + Fixtures + README (parallel)
+Phase 1 — Foundation + Core Infrastructure
+Assigned to: Claude Code (solo)
+Establishes the entire project skeleton plus every core infrastructure component. No Codex involvement. This is the largest phase by scope.
+Project Setup
+TypeScript, tsconfig (strict mode), package.json, commander CLI setup, build pipeline (tsup), npm publish config.
+Directory architecture: src/analyzers/, src/indexer/, src/resolver/, src/output/, src/watch/, src/frameworks/, src/cache/, src/core/.
+Core Type System
+All shared interfaces: PatternResult, ConfidenceScore, AnalyzerOutput, IntelligenceIndex, ResolverQuery, ResolvedContext, CacheEntry.
+◆ v4: Analyzer interface with required version field:
+interface Analyzer { name: string; version: string; analyze(context: AnalyzerContext): AnalyzerOutput; }
+■ v6: fileFilter method on Analyzer interface: fileFilter(file: DiscoveredFile): boolean. Each analyzer declares which files it needs. StylingSystemAnalyzer filters to .css, .scss, tailwind.config.*, .tsx (for className usage). ComponentPatternAnalyzer filters to .tsx, .jsx. ImportAnalyzer filters to .ts, .tsx, .js, .jsx, package.json. Orchestrator applies fileFilter before passing files to each analyzer. Prevents unnecessary parsing and improves performance.
+■ v6: Analyzer capability metadata: capabilities: string[] on Analyzer interface. Example: ["react", "tailwind", "compound-components"]. Passive in MVP — populated but not actively consumed. Reserved for future resolver integration and selective analyzer execution.
+◆ v4: AnalyzerContext abstraction: Analyzers receive structured context instead of raw rootPath. Interface: rootPath, files (DiscoveredFile[] — pre-filtered by fileFilter), cache (CacheLayer), previousResults (optional AnalyzerOutput).
+▶ v2: Versioned schema: .uiq/index.json includes schemaVersion field (starting at "1.0").
+Core Infrastructure Components
+◆ v4: File Discovery Engine (src/core/FileDiscovery.ts): Centralized file scanning. Glob-based discovery, .uiqignore enforcement, symlink handling, extension filtering, stable deterministic file ordering. Returns DiscoveredFile[] array. All analyzers receive files from this engine, never scan directly.
+○ FUTURE: Memory safety (AsyncIterable): Current FileDiscovery returns DiscoveredFile[]. For repos exceeding 50k files, FileDiscovery should return AsyncIterable<DiscoveredFile> to prevent memory spikes. Not needed for 10k file target. Deferred to future optimization pass.
+▶ v2: .uiqignore support: Reads .uiqignore (gitignore syntax). Default ignores: node_modules, dist, build, coverage, .next, .nuxt, .svelte-kit. Consumed by FileDiscovery.
+▶ v2: AnalyzerOrchestrator (src/core/AnalyzerOrchestrator.ts): Manages analyzer execution order based on dependency graph. Applies fileFilter per analyzer before execution. Runs independent analyzers in parallel, dependent analyzers sequentially. Aggregates all results.
+◆ v4: Concurrency control: Orchestrator enforces maxConcurrency = CPU core count (configurable). Prevents CPU thrashing during parallel execution.
+▶ v2: Error isolation: Each analyzer in try/catch with timeout. Crash or timeout → log error, skip, continue. Partial output marked (confidence: 0, status: "failed").
+◆ v4: Timeout protection: Configurable per-analyzer timeout. Default: 10 seconds. --timeout flag to override.
+▶ v2: Intelligence normalization layer (src/core/normalizer.ts): Canonical output format. Runs after each analyzer to enforce unified schema.
+◆ v4: Deterministic output guarantee: Stable key ordering, stable array sorting, stable file ordering in all JSON output. Reproducible output, meaningful git diffs.
+◆ v4: Schema migration engine (src/core/schemaMigration.ts): Detects schema version mismatch. Upgrades .uiq files automatically. Backward compatibility.
+◆ v4: Debug and telemetry mode: --debug flag with granular selection: --debug=analyzer,cache,resolver,discovery. Outputs execution times, cache hit rates, file counts per analyzer.
+Output Schema
+.uiq/ structure: index.json (master), patterns/*.json (detail), cache/ (internal).
+CLI Wiring
+Basic uiquarter init: FileDiscovery → Orchestrator (with fileFilter) → Normalizer → Indexer pipeline.
+Exit Criteria
+Running `npx uiquarter init` produces valid .uiq/ with schemaVersion. All types compile. All analyzer stubs exist with fileFilter and capabilities defined. Orchestrator runs them in correct dependency order with concurrency control and per-analyzer file filtering. .uiqignore respected. Crashing/timing-out analyzer does not crash pipeline. --debug shows timing. Two consecutive runs produce byte-identical output.
+Phase 2 — Analyzers + Orchestration
+Assigned to: Claude Code + Codex (parallel)
+Analyzers inspect different codebase aspects. Share interface from Phase 1. Dependencies managed by orchestrator. Each analyzer defines its own fileFilter.
+Analyzer Dependency Graph
+▶ v2: Explicit dependency order:
+ImportAnalyzer → no deps, runs first. fileFilter: .ts, .tsx, .js, .jsx, package.json.
+FileStructureAnalyzer → no deps, parallel with Import. fileFilter: all files (directory structure analysis).
+StateManagementAnalyzer → depends on ImportAnalyzer. fileFilter: .ts, .tsx, .js, .jsx.
+ComponentPatternAnalyzer → depends on ImportAnalyzer. fileFilter: .tsx, .jsx.
+StylingSystemAnalyzer → depends on Import + FileStructure. fileFilter: .css, .scss, .module.css, tailwind.config.*, .tsx, .jsx.
+Claude Code Tasks
+Component Pattern Analyzer: AST traversal for compound components, controlled/uncontrolled, HOC, render prop, composition. Depends on Import Analyzer.
+Styling System Analyzer: Tailwind config, CSS custom properties, design tokens, theme structure. Depends on Import + FileStructure.
+Codex Tasks (parallel, on feature branches)
+Claude Code prepares interface spec + test contract for each:
+Import/Dependency Analyzer: package.json + import scan. UI libs, state management, form handling, validation. No deps.
+File Structure Analyzer: Directory naming, file naming, co-location, barrel exports. No deps.
+State Management Analyzer: State approach from imports + usage. Depends on Import.
+Integration
+Claude Code reviews all Codex branches, runs normalizer, verifies fileFilter correctness, verifies orchestrator dependency order, merges into main.
+Phase 3 — Intelligence Engine + Cache
+Assigned to: Claude Code (solo)
+Combines analyzer outputs into unified intelligence index, assigns confidence scores, implements caching and output metadata.
+Intelligence Indexer
+Merges normalized AnalyzerOutput objects into IntelligenceIndex. Resolves conflicts.
+Pattern Confidence Scoring: Score 0–1 per pattern. Frequency, consistency, evidence strength.
+Output: .uiq/index.json (master) and .uiq/patterns/*.json (detail).
+■ v6: Output fingerprint (meta.json): .uiq/meta.json contains intelligenceHash (SHA-256 of entire index output), generatedAt (ISO timestamp), toolVersion (UIQuarter version), schemaVersion, analyzerTimings (per-analyzer execution time in ms). Used by drift detection, debugging, and performance optimization.
+Cache Layer
+▶ v2: File hashing: SHA-256 per analyzed file. Stored in .uiq/cache/filehashes.json.
+▶ v2: Analyzer result caching: Keyed by analyzer name + version + input file hashes.
+◆ v4: Analyzer version in cache key: Version bump auto-invalidates relevant cache entries.
+▶ v2: Incremental analysis: Only changed files re-analyzed. Unchanged results from cache.
+▶ v2: Cache structure: .uiq/cache/filehashes.json, analyzer-results.json, meta.json.
+■ v6: Cache corruption recovery: All cache reads wrapped in try/catch. If JSON.parse fails or cache structure is invalid: log warning with details, delete corrupted cache files, trigger full rebuild automatically. User sees: "Cache corrupted, rebuilding..." in CLI output. Silent breakage is never acceptable.
+■ v6: Per-analyzer performance profiling: Each analyzer’s execution time stored in .uiq/meta.json under analyzerTimings field. Example: { "ImportAnalyzer": 142, "ComponentPatternAnalyzer": 2891, "StylingSystemAnalyzer": 567 } (values in ms). Available without --debug flag. Helps identify optimization targets over time.
+Incremental Index Rebuild
+◆ v4: Rebuilds only affected pattern sections when analyzer results change. Single analyzer re-run does not trigger full index reconstruction.
+Exit Criteria
+Full run produces complete .uiq/ with scored patterns + meta.json with fingerprint and timings. Cached re-run < 500ms. Version bump invalidates cache. Corrupted cache auto-recovers. Incremental rebuild after single file change rebuilds only affected sections. meta.json accurately reflects analyzer timings.
+Phase 4 — Context Resolver
+Assigned to: Claude Code (solo)
+Returns only relevant intelligence subset for a given task. Token-efficient by design.
+Tasks
+Resolver engine: Takes task intent string, returns relevant patterns + tokens + conventions.
+▶ v2: Inverted index builder (ResolverIndex): Maps pattern → files, pattern → components, pattern → tokens, keyword → patterns. Enables < 100ms resolution.
+◆ v4: Keyword intelligence metadata: Each pattern includes keyword synonyms. "modal" → ["modal", "dialog", "popup", "overlay"]. Resolver matches expanded keyword set.
+Intent-to-pattern mapping: Keyword + synonym matching.
+Token budget system: Over budget → prioritize by confidence score.
+Output formatting: AI-optimized JSON and markdown.
+CLI command: `uiquarter resolve "add modal"` → resolved context to stdout.
+■ v6: Resolver scoring transparency (debug mode only): When --debug is active, resolver output includes reason field per pattern. Example: { pattern: "modal", confidence: 0.91, reason: "keyword match: dialog → modal synonym, pattern confidence: 0.91" }. Not included in normal output to preserve token budget. Aids debugging and trust building.
+Exit Criteria
+Correct context for 10+ intent queries including synonym matches. Response < 100ms. Token budget respected. --debug shows scoring reasons per pattern.
+Phase 5 — Integrations
+Assigned to: Claude Code + Codex (parallel)
+Claude Code Tasks
+CLAUDE.md generator: Intelligence index → well-structured, readable CLAUDE.md.
+Claude Code plugin packaging: .claude-plugin/plugin.json, SKILL.md, marketplace-compatible.
+Codex Tasks (parallel)
+Cursor rules export: Intelligence index → .cursorrules format.
+▶ v2: Watch mode with incremental strategy: chokidar file watching. File-to-analyzer map (respects fileFilter): tailwind.config.js → StylingSystemAnalyzer. .tsx change → ComponentPattern + Import. Uses cache layer + incremental index rebuild. Debounce: 300ms.
+CLI finalization: All commands (init, analyze, watch, resolve, export), flags (--format json|md, --budget <tokens>, --framework, --no-cache, --verbose, --debug, --timeout), error handling, colored output.
+Phase 6 — Framework Support
+Assigned to: Claude Code + Codex (parallel)
+Claude Code Tasks
+Next.js analyzer: App Router vs Pages Router, Server/Client Component, layout hierarchy, route groups, middleware.
+Codex Tasks (parallel)
+Nuxt analyzer: Auto-imports, composables, Nuxt config, module usage.
+SvelteKit analyzer: Runes, load functions, layout hierarchy, +page/+layout/+server.
+Both receive framework analyzer interface + Next.js analyzer output as reference.
+Phase 7 — Drift Detection + Ship
+Assigned to: Claude Code + Codex (parallel)
+Claude Code Tasks
+Context Drift Detection: Compare current vs previous .uiq/ snapshot using meta.json intelligenceHash for quick change detection. Detailed diff: new patterns, abandoned patterns, confidence changes, dependency changes. Human-readable drift report.
+Integration test suite: End-to-end on sample repos. Verify: full pipeline, fileFilter correctness, caching, cache corruption recovery, incremental rebuild, resolver with synonyms, resolver debug output, CLAUDE.md, watch mode, error isolation, timeout, schema migration, deterministic output, meta.json accuracy.
+Final review of all Codex contributions.
+Codex Tasks (parallel)
+Unit tests: Every analyzer (including fileFilter behavior), confidence scoring, resolver, cache, cache corruption handling, normalizer, orchestrator, FileDiscovery, schema migration, timeout handling.
+▶ v2: Test fixture repositories at test/fixtures/: react-tailwind/, nextjs-app-router/, nuxt3/, sveltekit/. Minimal but cover all detectable patterns.
+README.md: Installation, usage, demo output, architecture diagram, badges.
+npm publish: .npmignore, license, changelog, prepublish scripts.
+Ground Rules
+For Claude Code
+Never start a new phase until previous phase exit criteria are met.
+Always produce TypeScript interfaces + behavior specs + test contract before handing to Codex.
+Review every Codex branch. Run type-check, normalizer, and tests.
+If Codex module doesn’t meet spec, rewrite rather than patch.
+For Codex
+Only feature/* branches. Never touch main.
+Implement exactly what spec says. No extra features, no refactoring shared types.
+Ambiguous spec → stop and flag. Do not guess.
+Include tests for every module.
+General
+Phase 1 must be 100% complete before any Codex task begins.
+No module imports another module’s internals. Shared types + public API only.
+Every analyzer independently testable with mock file structures.
+All outputs pass through normalization layer before indexer.
+Cache used by default. --no-cache for forced full re-analysis.
+.uiqignore respected by every analyzer without exception.
+All analyzers use FileDiscovery for file access. No direct fs scanning.
+All analyzers define fileFilter. Orchestrator applies it before execution.
+All JSON output must be deterministically serialized.
+Architecture Summary
+Complete data flow:
+CLI Command (uiquarter init)
+  ↓
+FileDiscovery Engine → scans repo, applies .uiqignore, produces DiscoveredFile[]
+  ↓
+AnalyzerOrchestrator → resolves dependency graph, applies fileFilter per analyzer, enforces concurrency + timeout
+  ↓
+Analyzers (parallel where possible) → each receives filtered AnalyzerContext, produces AnalyzerOutput
+  ↓
+Normalizer → transforms each output to canonical format
+  ↓
+Cache Layer → stores/retrieves by analyzer name + version + file hashes (with corruption recovery)
+  ↓
+Intelligence Indexer → merges, confidence scoring, incremental rebuild
+  ↓
+.uiq/ Output → index.json + patterns/*.json (deterministic) + meta.json (fingerprint + timings)
+  ↓
+Context Resolver → inverted index + keyword synonyms → token-budgeted response (+debug scoring)
+  ↓
+Export Layer → CLAUDE.md / .cursorrules / Claude Code plugin
+Future Optimizations (Post-MVP)
+○ FUTURE: Memory safety via AsyncIterable: FileDiscovery returns AsyncIterable<DiscoveredFile> instead of array. Needed only for 50k+ file repos. Current array approach handles 10k target comfortably.
+○ FUTURE: Analyzer capability-based selective execution: Use capabilities metadata to skip irrelevant analyzers entirely (e.g. skip SvelteKit analyzer for React projects).
+○ FUTURE: Remote/shared intelligence: Aggregate anonymous pattern data across repos for collective intelligence recommendations.
+○ FUTURE: LSP integration: Language Server Protocol support for real-time IDE intelligence without CLI invocation.
+Revision History
+v2 Additions (Critical Gaps)
+Cache Layer, Analyzer Dependency Graph, Incremental Watch Strategy, Error Isolation, Normalization Layer, Resolver Inverted Index, Performance Targets, Test Fixtures, Versioned Schema, .uiqignore.
+v4 Additions (Infra Hardening)
+Analyzer Versioning, File Discovery Engine, AnalyzerContext Abstraction, Deterministic Output, Concurrency Control, Keyword Intelligence Metadata, Incremental Index Rebuild, Timeout Protection (10s), Schema Migration, Debug/Telemetry Mode.
+v6 Additions (Scoping, Safety, Polish)
+Analyzer Input Scoping via fileFilter (Phase 1 + 2): Each analyzer declares which file types it needs. Orchestrator applies filter before execution.
+Cache Corruption Recovery (Phase 3): try/catch on all cache reads, auto-invalidate + rebuild on corruption.
+Analyzer Capability Metadata (Phase 1): capabilities: string[] on Analyzer interface. Passive in MVP.
+Output Fingerprint meta.json (Phase 3): intelligenceHash, generatedAt, toolVersion, analyzerTimings.
+Resolver Scoring Transparency (Phase 4): reason field per pattern in --debug mode only.
+Per-Analyzer Performance Profiling (Phase 3): Execution times stored in meta.json.
+Memory Safety AsyncIterable deferred to Future Optimizations.
+— End of Final Plan —

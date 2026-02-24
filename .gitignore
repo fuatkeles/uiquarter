@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.uiq/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
